@@ -1,22 +1,21 @@
-#!/bin/bash
+#!/bin/sh
 
-set -euo pipefail
+set -eu
 
-# Tell apt-get we're never going to be able to give manual feedback:
-export DEBIAN_FRONTEND=noninteractive
+_apk() {
+   apk -X "@edge http://dl-cdn.alpinelinux.org/alpine/edge/main" \
+      $*
+}
 
 # Update the package listing, so we know what packages exist:
-apt-get update
+_apk update
 
 # Install security updates:
-apt-get -y upgrade
+_apk upgrade
 
-# Install our dependencies without unnecessary recommended packages:
-apt-get -y install --no-install-recommends \
-   -t buster-backports \
-   zfsutils-linux
+# Install our dependencies:
+_apk add zfs@edge
 
 # Delete cached files we don't need anymore:
-apt-get clean
-rm -rf /var/lib/apt/lists/*
+rm /var/cache/apk/*
 
