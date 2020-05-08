@@ -97,4 +97,3 @@ def get_properties(dataset, *keys):
             parts = line.split('\t')
             properties[parts[1]] = parts[2]
     return properties
-
