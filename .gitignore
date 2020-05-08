@@ -1,0 +1,16 @@
+.#*
+*~
+*.egg-info
+*.orig
+*.pyc
+*.pyo
+*.rej
+*.swo
+*.swp
+.ropeproject
+/build/
+/dist/
+/log/
+/tmp/
+venv/
+manifests/
