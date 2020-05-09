@@ -72,7 +72,7 @@ def filter_provisioner(body, **_):
 
 
 def filter_storage_class(body, **_):
-    return body.get('spec', {}).get('storageClassName', '') in CONFIG.storage_classes.keys()
+    return body.get('spec', {}).get('storageClassName', '') in CONFIG.storage_classes
 
 
 def filter_phase_pending(status, **_):
