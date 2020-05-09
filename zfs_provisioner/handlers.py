@@ -128,7 +128,7 @@ def annotate_results(fn):
 
 
 def get_example_pod(pod_name, node_name):
-    template_path = os.path.join(os.path.dirname(__file__), '..', 'templates', 'example-pod.yaml')
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'example-pod.yaml')
     template = open(template_path, 'rt').read()
     text = template.format(
         pod_name=pod_name,
