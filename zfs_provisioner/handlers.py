@@ -72,14 +72,6 @@ def filter_provisioner(body, **_):
     return body.get('provisioner', None) == CONFIG.provisioner_name
 
 
-def filter_storage_class(body, **_):
-    return body.get('spec', {}).get('storageClassName', '') in CONFIG.storage_classes
-
-
-def filter_phase_pending(status, **_):
-    return status.get('phase', None) == 'Pending'
-
-
 @kopf.on.resume('storage.k8s.io', 'v1', 'storageclasses',
     when=filter_provisioner)
 @kopf.on.create('storage.k8s.io', 'v1', 'storageclasses',
@@ -139,8 +131,40 @@ def get_example_pod(pod_name, node_name):
     return data
 
 
+def filter_create_dataset(body, meta, spec, status, **_):
+    """Filter function for resume, create and update handlers
+    that filters out the PVCs for which the dataset creation
+    process can be started.
+    """
+    # Only care about PVCs that are in state Pending.
+    if status.get('phase', None) != 'Pending':
+        return False
+
+    # Only care about PVCs that we are not already working on.
+    if CONFIG.dataset_phase_annotations['create'] in meta.annotations:
+        return False
+
+    handle_it = False
+    try:
+        # Only care about PVCs that have a storage class that we are responsible for.
+        storage_class_name = spec['storageClassName']
+        storage_class = CONFIG.storage_classes[storage_class_name]
+        handle_it = True
+
+        # Check storage class specific settings.
+        if storage_class.volumeBindingMode == 'WaitForFirstConsumer':
+            handle_it = 'volume.kubernetes.io/selected-node' in meta.annotations
+    except KeyError:
+        handle_it = False
+    return handle_it
+
+
+@kopf.on.resume('', 'v1', 'persistentvolumeclaims',
+    when=filter_create_dataset)
 @kopf.on.create('', 'v1', 'persistentvolumeclaims',
-    when=kopf.all_([filter_storage_class, filter_phase_pending]))
+    when=filter_create_dataset)
+@kopf.on.update('', 'v1', 'persistentvolumeclaims',
+    when=filter_create_dataset)
 @annotate_results
 def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
     """Schedule a pod that creates the zfs dataset.
@@ -222,8 +246,28 @@ async def dataset_pod_event(name, event, body, meta, status, namespace, **kwargs
                     )
 
 
+def filter_create_pv(body, meta, spec, status, **_):
+    """Filter function for resume, create and update handlers
+    that filters out the PVCs for which the PV can be created.
+    """
+    # Only care about PVCs that are in state Pending.
+    if status.get('phase', None) != 'Pending':
+        return False
+
+    action = 'create'
+    annotation = CONFIG.dataset_phase_annotations[action]
+
+    dataset_phase = meta.annotations.get(annotation, 'Pending')
+
+    # Only care about PVCs for which we have tried to create the dataset.
+    if dataset_phase not in ('Succeeded', 'Failed'):
+        return False
+
+    return True
+
+
 @kopf.on.update('', 'v1', 'persistentvolumeclaims',
-    when=kopf.all_([filter_storage_class, filter_phase_pending]))
+    when=filter_create_pv)
 @annotate_results
 def create_pv(name, namespace, body, meta, patch, results, **kwargs):
     action = 'create'
@@ -231,6 +275,7 @@ def create_pv(name, namespace, body, meta, patch, results, **kwargs):
 
     dataset_phase = meta.annotations.get(annotation, 'Pending')
     if dataset_phase == 'Pending':
+        # TODO: should be handled by filter
         raise kopf.TemporaryError('Dataset has not been created yet.', delay=10)
     elif dataset_phase == 'Failed':
         raise kopf.HandlerFatalError('Failed to create dataset.')
@@ -243,8 +288,9 @@ def create_pv(name, namespace, body, meta, patch, results, **kwargs):
             api.delete_namespaced_pod(pod_name, namespace)
 
         # TODO: create PV
+        selected_node = meta.annotations.get('volume.kubernetes.io/selected-node', 'unknown')
         log.debug('WOULD NOW CREATE THE PV')
-        log.info('Creating PV for pvc: %s', name)
+        log.info('Creating PV for pvc: %s on node: %s', name, selected_node)
 
 
 @click.command()
