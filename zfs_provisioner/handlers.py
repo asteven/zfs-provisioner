@@ -54,6 +54,7 @@ def configure(**kwargs):
 class StorageClass:
     """https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.17/#storageclass-v1-storage-k8s-io"""
     name: str
+    provisioner: str
     allowVolumeExpansion: bool = False
     mountOptions: List[str] = None
     parameters: Dict[str, str] = dataclasses.field(default_factory=dict)
