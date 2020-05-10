@@ -199,15 +199,32 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
     log.info(storage_class)
 
     # TODO: run the real container here instead of the example pod.
-    pod_name = 'pod-12345'
-    node_name = 'eu-k8s-01'
-    data = get_example_pod(pod_name, node_name)
+    # TODO: inspect the storage class parameters to decide how
+    #       and where to run the pod.
+
+#    template = get_template('dataset-pod.yaml')
+#    text = template.format(
+#        pod_name=pod_name,
+#        node_name=node_name,
+#        image=container_image,
+#        dataset_mount_dir=dataset_mount_dir,
+#    )
+#    data = yaml.safe_load(text)
+
+    action = 'create'
+
+    #pv_name = f"pvc-{meta['uid']}"
+    pod_name = f"{meta['uid']}-{action}"
+    #pod_name = 'pod-12345'
+    #node_name = 'eu-k8s-01'
+    # TODO: get node name from config for non-local volumes.
+    selected_node = meta.annotations['volume.kubernetes.io/selected-node']
+    data = get_example_pod(pod_name, selected_node)
 
     # Make the pod a child of the PVC.
     kopf.adopt(data)
 
     # Label the pod for filtering in the on.event handler.
-    action = 'create'
     kopf.label(data, {'zfs-provisioner/action': action})
 
     # Create the pod.
