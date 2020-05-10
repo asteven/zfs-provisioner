@@ -120,15 +120,33 @@ def annotate_results(fn):
     return wrapper
 
 
-def get_example_pod(pod_name, node_name):
-    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'example-pod.yaml')
+def get_template(template_file):
+    template_path = os.path.join(os.path.dirname(__file__), 'templates', template_file)
     template = open(template_path, 'rt').read()
+    return template
+
+
+def get_example_pod(pod_name, node_name):
+    template = get_template('example-pod.yaml')
     text = template.format(
         pod_name=pod_name,
         node_name=node_name,
     )
     data = yaml.safe_load(text)
     return data
+
+
+def get_dataset_pod(pod_name, node_name, dataset_mount_dir):
+    template = get_template('dataset-pod.yaml')
+    text = template.format(
+        pod_name=pod_name,
+        node_name=node_name,
+        image=CONFIG.container_image,
+        dataset_mount_dir=dataset_mount_dir,
+    )
+    data = yaml.safe_load(text)
+    return data
+
 
 
 def filter_create_dataset(body, meta, spec, status, **_):
