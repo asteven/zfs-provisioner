@@ -117,8 +117,8 @@ def annotate_results(fn):
         result = fn(*args, **kwargs)
         if result:
             results[fn.__name__] = result
-        patch = kwargs['patch']
-        patch.metadata.annotations[key] = json.dumps(results)
+            patch = kwargs['patch']
+            patch.metadata.annotations[key] = json.dumps(results)
 
         # We don't return the result as we have handled it ourself.
         # Otherwise kopf tries to store it again in the objects status
