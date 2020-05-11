@@ -244,7 +244,7 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
                 # Turn e.g. Gi into Gib so that bitmath understands it.
                 storage = storage + 'b'
             quota = int(bitmath.parse_string(storage).bytes)
-            pod_args.extend(['--quota', quota])
+            pod_args.extend(['--quota', str(quota)])
         except KeyError as e:
             log.error(e)
 
