@@ -6,7 +6,8 @@ LABEL maintainer "Steven Armstrong <steven.armstrong@id.ethz.ch>"
 
 RUN apk --no-cache -X "@edge http://dl-cdn.alpinelinux.org/alpine/edge/main" \
    add --upgrade apk-tools@edge \
-   build-base gcc
+   build-base gcc \
+   git
 
 ENV VIRTUAL_ENV=/venv
 RUN python3 -m venv $VIRTUAL_ENV
