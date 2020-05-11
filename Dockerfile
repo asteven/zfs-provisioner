@@ -15,6 +15,7 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 # Install python packages into virtual env.
 RUN mkdir /application
 COPY . /application
+RUN cd /application; pip install -r requirements.txt || true
 RUN cd /application; pip install .
 
 # Dumb-init as pid 1.
