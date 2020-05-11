@@ -7,11 +7,12 @@ import os
 import sys
 
 from functools import wraps
-from typing import Optional, Dict, Set, List
+from typing import Optional, Dict, List
 
 import yaml
 
 import click
+import bitmath
 import kopf
 
 from kopf.structs import patches
@@ -28,6 +29,7 @@ log = logging.getLogger('zfs-provisioner')
 class Config:
     provisioner_name: str = 'asteven/zfs-provisioner'
     namespace: str = 'kube-system'
+    default_parent_dataset: str = 'chaos/data/local-zfs-provisioner'
     dataset_mount_dir: str = '/var/lib/local-zfs-provisioner'
     container_image: str = 'asteven/zfs-provisioner'
     node_name: Optional[str] = None
@@ -58,8 +60,12 @@ class StorageClass:
     allowVolumeExpansion: bool = False
     mountOptions: List[str] = None
     parameters: Dict[str, str] = dataclasses.field(default_factory=dict)
-    reclaimPolicy: str = None
-    volumeBindingMode: str = None
+    reclaimPolicy: str = 'Delete'
+    volumeBindingMode: str = 'VolumeBindingImmediate'
+
+    # Constants
+    MODE_LOCAL: str = 'local'
+    MODE_NFS: str = 'nfs'
 
     @classmethod
     def from_dicts(cls, *dicts: List[Dict]) -> 'StorageClass':
@@ -136,15 +142,16 @@ def get_example_pod(pod_name, node_name):
     return data
 
 
-def get_dataset_pod(pod_name, node_name, dataset_mount_dir):
+def get_dataset_pod(pod_name, node_name, pod_args):
     template = get_template('dataset-pod.yaml')
     text = template.format(
         pod_name=pod_name,
         node_name=node_name,
         image=CONFIG.container_image,
-        dataset_mount_dir=dataset_mount_dir,
+        dataset_mount_dir=CONFIG.dataset_mount_dir,
     )
     data = yaml.safe_load(text)
+    data['spec']['containers'][0]['args'] = pod_args
     return data
 
 
@@ -213,13 +220,47 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
 
     action = 'create'
 
-    #pv_name = f"pvc-{meta['uid']}"
-    pod_name = f"{meta['uid']}-{action}"
+    pv_name = f"pvc-{meta['uid']}"
+    #pod_name = f"{meta['uid']}-{action}"
+    pod_name = f"{pv_name}-{action}"
     #pod_name = 'pod-12345'
     #node_name = 'eu-k8s-01'
-    # TODO: get node name from config for non-local volumes.
-    selected_node = meta.annotations['volume.kubernetes.io/selected-node']
-    data = get_example_pod(pod_name, selected_node)
+
+    # if mode == local:
+    #   - get selected node from annotation, schedule create pod there
+    storage_class_mode = storage_class.parameters.get('mode', 'local')
+    if storage_class_mode == storage_class.MODE_LOCAL:
+        selected_node = meta.annotations['volume.kubernetes.io/selected-node']
+        # TODO: get/check parent dataset override from config
+        parent_dataset = CONFIG.default_parent_dataset
+        dataset_name = os.path.join(parent_dataset, pv_name)
+        mount_point = os.path.join(CONFIG.dataset_mount_dir, pv_name)
+
+        pod_args = ['dataset', 'create']
+
+        try:
+            storage = spec['resources']['requests']['storage']
+            if storage[-1:] == 'i':
+                # Turn e.g. Gi into Gib so that bitmath understands it.
+                storage = storage + 'b'
+            quota = int(bitmath.parse_string(storage).bytes)
+            pod_args.extend(['--quota', quota])
+        except KeyError as e:
+            log.error(e)
+
+        pod_args.append(dataset_name)
+        pod_args.append(mount_point)
+
+    #elif storage_class_mode == storage_class.MODE_NFS:
+    #   - get nfs server node name from config, schedule create pod create
+    #   - setup nfs export, if at all possible using zfs property instead of exportfs
+    else:
+        raise kopf.HandlerFatalError(f'Unsupported storage class mode: {storage_class_mode}')
+
+    log.info('pod_args: %s', pod_args)
+
+    #data = get_example_pod(pod_name, selected_node)
+    data = get_dataset_pod(pod_name, selected_node, pod_args)
 
     # Make the pod a child of the PVC.
     kopf.adopt(data)
