@@ -55,7 +55,6 @@ def destroy(dataset, *args):
     cmd.append(dataset)
     log.debug('zfs.destroy: %s', cmd)
 
-    return
     try:
         subprocess.check_call(cmd)
     except subprocess.SubprocessError as e:
