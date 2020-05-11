@@ -226,6 +226,11 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
     #pod_name = 'pod-12345'
     #node_name = 'eu-k8s-01'
 
+    result = {
+        'pv_name': pv_name,
+        'pod_name': pod_name,
+    }
+
     # if mode == local:
     #   - get selected node from annotation, schedule create pod there
     storage_class_mode = storage_class.parameters.get('mode', 'local')
@@ -235,6 +240,7 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
         parent_dataset = CONFIG.default_parent_dataset
         dataset_name = os.path.join(parent_dataset, pv_name)
         mount_point = os.path.join(CONFIG.dataset_mount_dir, pv_name)
+        result['path'] = mount_point
 
         pod_args = ['dataset', 'create']
 
@@ -281,12 +287,8 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
 
     # Remember the pods name so that the other handler can delete it after the
     # dataset has been created.
-    return {
-        'pod-name': obj.metadata.name,
-        'phase': obj.status.phase,
-        'created': False,
-        'path': '/path/to/created-dataset',
-    }
+    result['phase'] = obj.status.phase
+    return result
 
 
 pvc_resource = resources.Resource(group='', version='v1', plural='persistentvolumeclaims')
@@ -345,7 +347,7 @@ def filter_create_pv(body, meta, spec, status, **_):
 @kopf.on.update('', 'v1', 'persistentvolumeclaims',
     when=filter_create_pv)
 @annotate_results
-def create_pv(name, namespace, body, meta, patch, results, **kwargs):
+def create_pv(name, namespace, body, meta, spec, patch, results, **kwargs):
     action = 'create'
     annotation = CONFIG.dataset_phase_annotations[action]
 
@@ -358,15 +360,37 @@ def create_pv(name, namespace, body, meta, patch, results, **kwargs):
     elif dataset_phase == 'Succeeded':
         api = kubernetes.client.CoreV1Api()
 
-        pod_name = results.get('create_dataset', {}).get('pod-name', None)
+        create_dataset_results = results.get('create_dataset', {})
+
+        pod_name = create_dataset_results.get('pod_name', None)
         if pod_name:
             log.debug('Deleting dataset creation pod: %s', pod_name)
             api.delete_namespaced_pod(pod_name, namespace)
 
-        # TODO: create PV
-        selected_node = meta.annotations.get('volume.kubernetes.io/selected-node', 'unknown')
-        log.debug('WOULD NOW CREATE THE PV')
+        # Create the PV to fullfill this PVC.
+
+        storage_class_name = spec['storageClassName']
+        storage_class = CONFIG.storage_classes[storage_class_name]
+        selected_node = meta.annotations['volume.kubernetes.io/selected-node']
+
+        template = get_template('pvc.yaml')
+        text = template.format(
+            provisioner_name=storage_class.provisioner,
+            pv_name=create_dataset_results['pv_name'],
+            access_mode=spec['accessModes'][0],
+            storage=spec['resources']['requests']['storage'],
+            pvc_name=name,
+            pvc_namespace=namespace,
+            local_path=create_dataset_results['path'],
+            selected_node_name=selected_node,
+            storage_class_name=storage_class_name,
+            volume_mode=spec['volumeMode'],
+            reclaim_policy=storage_class.reclaimPolicy,
+        )
+        data = yaml.safe_load(text)
+
         log.info('Creating PV for pvc: %s on node: %s', name, selected_node)
+        api.create_persistent_volume(body=data)
 
 
 @click.command()
