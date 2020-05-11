@@ -21,6 +21,7 @@ setup(
         'pyyaml',
         'kopf',
         'kubernetes',
+        'bitmath',
     ],
     entry_points={
         'console_scripts': [
