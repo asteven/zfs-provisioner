@@ -27,7 +27,7 @@ FROM python:3.8-alpine AS runtime-image
 
 # Install runtime dependencies.
 COPY install-packages.sh .
-RUN ./install-packages.sh
+RUN ./install-packages.sh; rm ./install-packages.sh
 
 COPY --from=compile-image /venv /venv
 
