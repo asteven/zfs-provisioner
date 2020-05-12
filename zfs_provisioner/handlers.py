@@ -15,11 +15,12 @@ import click
 import bitmath
 import kopf
 
+from kopf.clients import patching
 from kopf.structs import patches
 from kopf.structs import resources
-from kopf.clients import patching
 
 import kubernetes
+import kubernetes_asyncio
 
 
 log = logging.getLogger('zfs-provisioner')
@@ -66,6 +67,8 @@ class StorageClass:
     # Constants
     MODE_LOCAL: str = 'local'
     MODE_NFS: str = 'nfs'
+    RECLAIM_POLICY_DELETE: str = 'Delete'
+    RECLAIM_POLICY_RETAIN: str = 'Retain'
 
     @classmethod
     def from_dicts(cls, *dicts: List[Dict]) -> 'StorageClass':
@@ -155,7 +158,6 @@ def get_dataset_pod(pod_name, node_name, pod_args):
     return data
 
 
-
 def filter_create_dataset(body, meta, spec, status, **_):
     """Filter function for resume, create and update handlers
     that filters out the PVCs for which the dataset creation
@@ -201,38 +203,15 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
     storage_class_name = spec['storageClassName']
     storage_class = CONFIG.storage_classes[storage_class_name]
 
-    # TODO: inspect the storage class to determine how/where to create
-    #   the zfs dataset. local vs on nfs server
-    log.info(storage_class)
-
-    # TODO: run the real container here instead of the example pod.
-    # TODO: inspect the storage class parameters to decide how
-    #       and where to run the pod.
-
-#    template = get_template('dataset-pod.yaml')
-#    text = template.format(
-#        pod_name=pod_name,
-#        node_name=node_name,
-#        image=container_image,
-#        dataset_mount_dir=dataset_mount_dir,
-#    )
-#    data = yaml.safe_load(text)
-
     action = 'create'
-
     pv_name = f"pvc-{meta['uid']}"
-    #pod_name = f"{meta['uid']}-{action}"
     pod_name = f"{pv_name}-{action}"
-    #pod_name = 'pod-12345'
-    #node_name = 'eu-k8s-01'
 
     result = {
         'pv_name': pv_name,
         'pod_name': pod_name,
     }
 
-    # if mode == local:
-    #   - get selected node from annotation, schedule create pod there
     storage_class_mode = storage_class.parameters.get('mode', 'local')
     if storage_class_mode == storage_class.MODE_LOCAL:
         selected_node = meta.annotations['volume.kubernetes.io/selected-node']
@@ -240,7 +219,9 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
         parent_dataset = CONFIG.default_parent_dataset
         dataset_name = os.path.join(parent_dataset, pv_name)
         mount_point = os.path.join(CONFIG.dataset_mount_dir, pv_name)
-        result['path'] = mount_point
+        result['dataset_name'] = dataset_name
+        result['mount_point'] = mount_point
+        result['selected_node'] = selected_node
 
         pod_args = ['dataset', 'create']
 
@@ -293,8 +274,8 @@ def create_dataset(name, namespace, body, meta, spec, status, patch, **_):
 
 pvc_resource = resources.Resource(group='', version='v1', plural='persistentvolumeclaims')
 
-@kopf.on.event('', 'v1', 'pods', labels={'zfs-provisioner/action': kopf.PRESENT})
-async def dataset_pod_event(name, event, body, meta, status, namespace, **kwargs):
+@kopf.on.event('', 'v1', 'pods', labels={'zfs-provisioner/action': 'create'})
+async def dataset_create_pod_event(name, event, body, meta, status, namespace, **kwargs):
     """Watch our dataset management pods for success or failures.
     """
     log.debug('pod_event: event: %s', event)
@@ -323,6 +304,14 @@ async def dataset_pod_event(name, event, body, meta, status, namespace, **kwargs
                         namespace=owner.get('namespace', namespace),
                     )
 
+            # All done. Delete the pod.
+            # TODO: in case of failure get errors and store them somewhere?
+            await kubernetes_asyncio.config.load_kube_config()
+            async with kubernetes_asyncio.client.ApiClient() as api:
+                v1 = kubernetes_asyncio.client.CoreV1Api(api)
+                log.info('Deleting dataset creation pod: %s', name)
+                await v1.delete_namespaced_pod(name, namespace)
+
 
 def filter_create_pv(body, meta, spec, status, **_):
     """Filter function for resume, create and update handlers
@@ -348,12 +337,14 @@ def filter_create_pv(body, meta, spec, status, **_):
     when=filter_create_pv)
 @annotate_results
 def create_pv(name, namespace, body, meta, spec, patch, results, **kwargs):
+    """Create the PV to fullfill this PVC.
+    """
     action = 'create'
     annotation = CONFIG.dataset_phase_annotations[action]
 
     dataset_phase = meta.annotations.get(annotation, 'Pending')
     if dataset_phase == 'Pending':
-        # TODO: should be handled by filter
+        # Should never happen. Already handled by filter.
         raise kopf.TemporaryError('Dataset has not been created yet.', delay=10)
     elif dataset_phase == 'Failed':
         raise kopf.HandlerFatalError('Failed to create dataset.')
@@ -361,13 +352,6 @@ def create_pv(name, namespace, body, meta, spec, patch, results, **kwargs):
         api = kubernetes.client.CoreV1Api()
 
         create_dataset_results = results.get('create_dataset', {})
-
-        pod_name = create_dataset_results.get('pod_name', None)
-        if pod_name:
-            log.debug('Deleting dataset creation pod: %s', pod_name)
-            api.delete_namespaced_pod(pod_name, namespace)
-
-        # Create the PV to fullfill this PVC.
 
         storage_class_name = spec['storageClassName']
         storage_class = CONFIG.storage_classes[storage_class_name]
@@ -381,7 +365,7 @@ def create_pv(name, namespace, body, meta, spec, patch, results, **kwargs):
             storage=spec['resources']['requests']['storage'],
             pvc_name=name,
             pvc_namespace=namespace,
-            local_path=create_dataset_results['path'],
+            local_path=create_dataset_results['mount_point'],
             selected_node_name=selected_node,
             storage_class_name=storage_class_name,
             volume_mode=spec['volumeMode'],
@@ -391,6 +375,126 @@ def create_pv(name, namespace, body, meta, spec, patch, results, **kwargs):
 
         log.info('Creating PV for pvc: %s on node: %s', name, selected_node)
         api.create_persistent_volume(body=data)
+
+
+def filter_delete_dataset(body, meta, spec, status, **_):
+    """Filter function for delete handlers that filters out the PVCs for which
+    the dataset deletion process can be started.
+    """
+    # Only care about PVCs that are in state Pending.
+    # TODO: in which phases can we safely delete a dataset?
+    #if status.get('phase', None) != 'Pending':
+    #    return False
+
+    # Only care about PVCs that we are not already working on.
+    if CONFIG.dataset_phase_annotations['delete'] in meta.annotations:
+        return False
+
+    handle_it = False
+    try:
+        # Only care about PVCs that have a storage class that we are responsible for.
+        storage_class_name = spec['storageClassName']
+        storage_class = CONFIG.storage_classes[storage_class_name]
+        handle_it = True
+
+        # Check storage class specific settings.
+        if storage_class.reclaimPolicy == storage_class.RECLAIM_POLICY_DELETE:
+            handle_it = True
+    except KeyError:
+        handle_it = False
+    return handle_it
+
+#@kopf.on.delete('', 'v1', 'persistentvolumeclaims',
+#    when=filter_delete_dataset)
+#@annotate_results
+#def testing_delete_handler(name, namespace, body, meta, spec, status, patch, results, **_):
+#    """Schedule a pod that deletes the zfs dataset.
+#    """
+#    log.info('testing_delete_handler: %s', name)
+#    import time
+#    time.sleep(10)
+
+
+@kopf.on.delete('', 'v1', 'persistentvolumeclaims',
+    when=filter_delete_dataset)
+@annotate_results
+def delete_dataset(name, namespace, body, meta, spec, status, patch, results, **_):
+    """Schedule a pod that deletes the zfs dataset.
+    """
+    log.info('Deleting zfs dataset for pvc: %s', name)
+
+    action = 'delete'
+
+    create_dataset_results = results['create_dataset']
+    pv_name = create_dataset_results['pv_name']
+    pod_name = f"{pv_name}-{action}"
+
+    result = {
+        'pv_name': pv_name,
+        'pod_name': pod_name,
+    }
+
+    dataset_name = create_dataset_results['dataset_name']
+    mount_point = create_dataset_results['mount_point']
+    selected_node = create_dataset_results['selected_node']
+
+    pod_args = ['dataset', 'destroy', dataset_name, mount_point]
+
+    log.info('pod_args: %s', pod_args)
+
+    data = get_dataset_pod(pod_name, selected_node, pod_args)
+
+    # Make the pod a child of the PVC.
+    #kopf.adopt(data)
+
+    # Label the pod for filtering in the on.event handler.
+    kopf.label(data, {'zfs-provisioner/action': action})
+
+    # Create the pod.
+    api = kubernetes.client.CoreV1Api()
+    obj = api.create_namespaced_pod(
+        body=data,
+        namespace=namespace,
+    )
+
+    # Set the initial dataset creation phase to that of the newly created pod.
+    annotation = CONFIG.dataset_phase_annotations[action]
+    patch.metadata.annotations[annotation] = obj.status.phase
+
+    # Delete the persistent volume.
+    api.delete_persistent_volume(pv_name)
+
+    # Remember the pods name so that the other handler can delete it after the
+    # dataset has been created.
+    result['phase'] = obj.status.phase
+    return result
+
+
+@kopf.on.event('', 'v1', 'pods', labels={'zfs-provisioner/action': 'delete'})
+async def dataset_delete_pod_event(name, event, body, meta, status, namespace, **kwargs):
+    """Watch our dataset deletion pods for success or failures.
+    """
+    log.debug('dataset_delete_pod_event: event: %s', event)
+    #log.debug(f'pod_event: body: {body}')
+
+    # Only care about changes to existing pods.
+    if event['type'] == 'MODIFIED':
+
+        phase = status['phase']
+        action = meta.labels['zfs-provisioner/action']
+
+        log.debug('pod_event: %s: %s', action, phase)
+
+        if phase in ('Succeeded', 'Failed'):
+            log.info('dataset %s: %s -> %s', name, action, phase)
+
+            # All done. Delete the pod.
+            # TODO: in case of failure get errors and store them somewhere?
+            await kubernetes_asyncio.config.load_kube_config()
+            async with kubernetes_asyncio.client.ApiClient() as api:
+                v1 = kubernetes_asyncio.client.CoreV1Api(api)
+                log.info('Deleting dataset creation pod: %s', name)
+                await v1.delete_namespaced_pod(name, namespace)
 
 
 @click.command()
