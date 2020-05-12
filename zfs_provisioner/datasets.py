@@ -105,7 +105,6 @@ async def on_event(event, name, namespace, meta, status, **_):
             # All done. Delete the pod.
             # TODO: in case of failure get errors and store them somewhere?
             if phase == 'Succeeded':
-                return
                 # For now keep failed pods around for inspection.
                 async with kubernetes_asyncio.client.ApiClient() as api:
                     v1 = kubernetes_asyncio.client.CoreV1Api(api)
