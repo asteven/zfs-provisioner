@@ -13,6 +13,9 @@ spec:
     imagePullPolicy: Always
     args: []
     # TODO: add args
+    env:
+    - name: ZFS_PROVISIONER_LOG_LEVEL
+      value: {log_level}
 
     securityContext:
       privileged: true
