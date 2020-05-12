@@ -110,17 +110,11 @@ def dataset_destroy(ctx, dataset, mountpoint):
     log = ctx.obj['log']
     log.debug('%s: %s', ctx.info_name, ctx.params)
 
+    # Destroy the dataset.
     zfs.destroy(dataset)
 
-    """
-    TODO:
-    - destroy the DATASET
-        zfs destroy dataset
-
-    - delete the MOUNTPOINT directory
-        os.rmdir(mountpoint)
-
-    """
+    # Delete the mountpint.
+    os.rmdir(mountpoint)
 
 
 if __name__ == '__main__':
