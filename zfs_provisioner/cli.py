@@ -75,10 +75,11 @@ def dataset(ctx):
 @click.argument('dataset')
 @click.argument('mountpoint')
 @click.option('--quota', help='Quota of the dataset.')
+@click.option('--refquota', help='Refquota of the dataset.')
 @click.pass_context
-def dataset_create(ctx, dataset, mountpoint, quota):
+def dataset_create(ctx, dataset, mountpoint, quota, refquota):
     """Create the given DATASET and mount it to MOUNTPOINT
-    while optionally setting a quota.
+    while optionally setting a quota and/or refquota.
 
     Ensure that the parent dataset, determined from DATASET,
     exists and ensure it has safe permissions.
@@ -96,7 +97,7 @@ def dataset_create(ctx, dataset, mountpoint, quota):
     os.chmod(mountpoint_dir, 0o700)
 
     # Create our dataset and ensure it is writable by the pod.
-    zfs.create(dataset, mountpoint=mountpoint, quota=quota)
+    zfs.create(dataset, mountpoint=mountpoint, quota=quota, refquota=refquota)
     os.chmod(mountpoint, 0o777)
 
 
