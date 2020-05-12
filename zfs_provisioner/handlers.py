@@ -252,17 +252,19 @@ async def delete_dataset(name, namespace, body, meta, spec, **_):
         # TODO: do I really have to care about storage class mode when
         #       taking the dataset from a annotation or is everything already
         #       correct for any mode?
-        dataset_dict = json.loads(meta.annotations[CONFIG.dataset_annotation])
-        dataset = datasets.Dataset(**dataset_dict)
-        log.debug('delete_dataset: %s', dataset)
 
-        #log.info('%s: deleting zfs dataset', name)
-        message = f'zfs dataset {dataset.selected_node}:{dataset.full_name}'
-        log.info('%s: deleting %s', name, message)
-        # TODO: proper error handling with exceptions
-        obj = await dataset.delete(namespace)
-        kopf.info(body, reason='Deleted', message='deleted {message}')
-        log.debug('obj: %s', obj)
+        if storage_class.reclaimPolicy == storage_class.RECLAIM_POLICY_DELETE:
+            # Only delete datasets if reclaimPolicy says so.
+            dataset_dict = json.loads(meta.annotations[CONFIG.dataset_annotation])
+            dataset = datasets.Dataset(**dataset_dict)
+            log.debug('delete_dataset: %s', dataset)
+
+            message = f'zfs dataset {dataset.selected_node}:{dataset.full_name}'
+            log.info('%s: deleting %s', name, message)
+            # TODO: proper error handling with exceptions
+            obj = await dataset.delete(namespace)
+            kopf.info(body, reason='Deleted', message='deleted {message}')
+            log.debug('obj: %s', obj)
 
         # Delete the persistent volume.
         pv_name = spec['volumeName']
