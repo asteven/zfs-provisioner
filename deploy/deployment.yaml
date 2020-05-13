@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zfs-provisioner
+  namespace: kube-system
+  labels:
+    app: zfs-provisioner
+    tier: node
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zfs-provisioner
+  template:
+    metadata:
+      labels:
+        app: zfs-provisioner
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      serviceAccountName: zfs-provisioner
+      serviceAccount: zfs-provisioner
+      containers:
+      - name: zfs-provisioner
+        image: &image asteven/zfs-provisioner:latest
+        imagePullPolicy: Always
+        args:
+        - --verbose
+        - controller
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTAINER_IMAGE
+          value: *image
+#        volumeMounts:
+#        - name: config-volume
+#          mountPath: /etc/config/
+#          readOnly: true
+#      volumes:
+#        - name: config-volume
+#          configMap:
+#            name: zfs-provisioner-config
+      hostNetwork: true
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-zfs
+provisioner: asteven/zfs-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

@@ -1,0 +1,20 @@
+# TODO: not implememted yet
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: zfs-provisioner-config
+  namespace: kube-system
+data:
+  config.json: |-
+    {
+        "nodeDatasetMap": [
+            {
+                "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                "dataset": "chaos/data/zfs-provisioner"
+            },
+            {
+                "node": "that-other-node",
+                "dataset": "tank/zfs-provisioner"
+            }
+        ]
+    }
