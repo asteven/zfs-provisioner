@@ -33,12 +33,14 @@ def main(ctx, log_level):
 @click.option('--config', help='Provisioner configuration file.', envvar='CONFIG')
 @click.option('--dataset-mount-dir', help='Directory under which to mount the created persistent volumes.',
     envvar='DATASET_MOUNT_DIR')
+@click.option('--container-image', help='The container image to use when scheduling pods.',
+    envvar='CONTAINER_IMAGE')
 @click.option('--node-name', help='The name of the node on which the provisioner is running.',
     envvar='NODE_NAME')
 @click.option('--kl', 'set_kopf_log_level', help='also set kopf\'s log level',
     is_flag=True, default=False)
 @click.pass_context
-def controller(ctx, provisioner_name, namespace, config, node_name, dataset_mount_dir, set_kopf_log_level):
+def controller(ctx, provisioner_name, namespace, config, container_image, node_name, dataset_mount_dir, set_kopf_log_level):
     log = ctx.obj['log']
     log.debug('controller: provisioner_name: %s', provisioner_name)
     log.debug('controller: namespace: %s', namespace)
@@ -56,6 +58,7 @@ def controller(ctx, provisioner_name, namespace, config, node_name, dataset_moun
         provisioner_name=provisioner_name,
         namespace=namespace,
         config=config,
+        container_image=container_image,
         node_name=node_name,
         dataset_mount_dir=dataset_mount_dir,
     )
