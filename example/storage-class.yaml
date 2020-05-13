@@ -1,0 +1,30 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: example-local-zfs
+provisioner: asteven/zfs-provisioner
+volumeBindingMode: WaitForFirstConsumer
+# TODO: implement volume expansion
+#allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  mode: local
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: example-local-zfs-retain
+provisioner: asteven/zfs-provisioner
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Retain
+parameters:
+  mode: local
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: example-local-zfs-no-wait
+provisioner: asteven/zfs-provisioner
+reclaimPolicy: Delete
+parameters:
+  mode: local

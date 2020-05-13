@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: example-local-zfs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: example-local-zfs
+  resources:
+    requests:
+      storage: 2Gi

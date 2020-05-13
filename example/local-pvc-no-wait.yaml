@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: example-local-zfs-pvc-no-wait
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: example-local-zfs-no-wait
+  resources:
+    requests:
+      storage: 2Gi
