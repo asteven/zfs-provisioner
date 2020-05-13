@@ -40,11 +40,18 @@ kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/maste
 
 ## Usage
 
-Create a Persistent Volume Claim and a pod that uses it:
+Create some storage classes.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pvc.yaml
-kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pod.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/storage-class.yaml
+```
+
+Create a Persistent Volume Claim and a pod that uses it:
+
+
+```
+kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pvc.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pod.yaml
 ```
 
 You should see that the PV has been created:
@@ -81,13 +88,13 @@ kubectl exec volume-test-zfs -- sh -c "echo local-zfs-test > /data/test"
 Now delete the pod again:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pod.yaml
 ```
 
 After confirming that the pod is gone, recreated it:
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pod.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pod.yaml
 ```
 
 Check the volume content:
@@ -100,8 +107,8 @@ local-zfs-test
 Delete the pod and the pvc:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pod.yaml
-kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/pvc.yaml
+kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pod.yaml
+kubectl delete -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/example/local-pvc.yaml
 ```
 
 The volume content stored on the node will be automatically cleaned up. You can check the log of the `zfs-provisioner-xxx` pod for details.
