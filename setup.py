@@ -21,6 +21,7 @@ setup(
         'pyyaml',
         'kopf',
         'kubernetes',
+        'kubernetes_asyncio'
         'bitmath',
     ],
     entry_points={
