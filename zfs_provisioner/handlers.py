@@ -81,7 +81,7 @@ async def startup(logger, **kwargs):
     # Load kubernetes_asyncio config as kopf does not do that automatically for us.
     try:
         # Try incluster config first.
-        await kubernetes_asyncio.config.load_incluster_config()
+        kubernetes_asyncio.config.load_incluster_config()
     except kubernetes_asyncio.config.ConfigException:
         # Fall back to regular config.
         await kubernetes_asyncio.config.load_kube_config()
