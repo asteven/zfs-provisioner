@@ -7,14 +7,8 @@ metadata:
 data:
   config.json: |-
     {
-        "nodeDatasetMap": [
-            {
-                "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                "dataset": "chaos/data/zfs-provisioner"
-            },
-            {
-                "node": "that-other-node",
-                "dataset": "tank/zfs-provisioner"
-            }
-        ]
+       "node_dataset_map": {
+          "__default__": "chaos/data/zfs-provisioner",
+          "that-other-node": "tank/zfs-provisioner"
+       }
     }

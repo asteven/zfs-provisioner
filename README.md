@@ -23,16 +23,15 @@ Kubernetes v1.14+.
 In this setup the directory `/var/lib/zfs-provisioner` will be used across
 all nodes as the base mount point for provisioned datasets.
 The provisioner will be installed in the `kube-system` namespace by default.
+deployment.yaml can/should be customized to suit your zfs/zpool layout.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/deploy/rbac.yaml
 kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/deploy/deployment.yaml
 ```
 
-Create a suitable configmap and add it to the cluster. You will have to change this to work
-with your zfs pools and datasets.
-
-TODO: implement configmap support, currently using hard coded values.
+If the zfs pool and dataset names are not homogeneous within the cluster you can create
+a suitable configmap that maps node names to dataset names.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/asteven/zfs-provisioner/master/deploy/example-config.yaml

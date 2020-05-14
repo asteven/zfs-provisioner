@@ -17,12 +17,14 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
+        'aiofiles',
+        'bitmath',
         'click',
-        'pyyaml',
+        'inotipy',
         'kopf',
         'kubernetes',
         'kubernetes_asyncio',
-        'bitmath',
+        'pyyaml',
     ],
     entry_points={
         'console_scripts': [

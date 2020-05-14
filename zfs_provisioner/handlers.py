@@ -8,7 +8,9 @@ import sys
 
 from typing import Optional, Dict, List
 
+import aiofiles
 import click
+import inotipy
 import kopf
 import kubernetes_asyncio
 import yaml
@@ -24,11 +26,14 @@ log = logging.getLogger('zfs-provisioner')
 class Config:
     provisioner_name: str = 'asteven/zfs-provisioner'
     namespace: str = 'kube-system'
-    default_parent_dataset: str = 'chaos/data/zfs-provisioner'
+    parent_dataset: str = 'chaos/data/zfs-provisioner'
     dataset_mount_dir: str = '/var/lib/zfs-provisioner'
     container_image: str = 'asteven/zfs-provisioner'
     node_name: Optional[str] = None
+    # Path to a config file.
     config: Optional[str] = None
+    # The config loaded from `config` as a dict.
+    dataset_config: Optional[Dict] = dataclasses.field(default_factory=dict)
     dataset_phase_annotations: Dict[str, str] = dataclasses.field(default_factory=dict)
     storage_classes: Dict[str, Dict] = dataclasses.field(default_factory=dict)
     dataset_annotation: str = 'zfs-provisioner/dataset'
@@ -76,8 +81,40 @@ class StorageClass:
         return cls(**{k:v for k,v in items if k in class_fields})
 
 
+async def load_config(config_file, reload=False):
+    if reload:
+        prefix = 'Reloading'
+    else:
+        prefix = 'Loading'
+    log.info('%s dataset config from: %s', prefix, config_file)
+    async with aiofiles.open(config_file, mode='r') as f:
+        config_string = await f.read()
+        CONFIG.dataset_config = json.loads(config_string)
+
+
+async def watch_config_file(config_file):
+    """Monitor the config file and reload it on change.
+    """
+    # Load initial config.
+    await load_config(config_file)
+
+    watcher = inotipy.Watcher.create()
+    watcher.watch(config_file, inotipy.IN.MODIFY)
+
+    while True:
+        event = await watcher.get()
+        log.debug(event)
+        await load_config(config_file, reload=True)
+        if event.mask & inotipy.EVENT_BIT.IGNORED.mask != 0:
+            # Re-create the watch if the file was removed/re-created.
+            event.watch.remove()
+            watcher.watch(config_file, inotipy.IN.MODIFY)
+
+
+config_watcher_task = None
+
 @kopf.on.startup()
-async def startup(logger, **kwargs):
+async def startup(**_):
     # Load kubernetes_asyncio config as kopf does not do that automatically for us.
     try:
         # Try incluster config first.
@@ -85,6 +122,18 @@ async def startup(logger, **kwargs):
     except kubernetes_asyncio.config.ConfigException:
         # Fall back to regular config.
         await kubernetes_asyncio.config.load_kube_config()
+
+    # Monitor config file for changes.
+    if CONFIG.config:
+        global config_watcher_task
+        config_watcher_task = asyncio.create_task(watch_config_file(CONFIG.config))
+
+
+@kopf.on.cleanup()
+async def cleanup(**_):
+    global config_watcher_task
+    if config_watcher_task:
+        config_watcher_task.cancel()
 
 
 def filter_provisioner(body, **_):
@@ -150,8 +199,15 @@ async def create_dataset(name, namespace, body, meta, spec, patch, logger, **_):
     storage_class_mode = storage_class.parameters.get('mode', 'local')
     if storage_class_mode == storage_class.MODE_LOCAL:
         selected_node = meta.annotations['volume.kubernetes.io/selected-node']
-        # TODO: get/check parent dataset override from config
-        parent_dataset = CONFIG.default_parent_dataset
+        if CONFIG.dataset_config:
+            dataset_config = CONFIG.dataset_config['node_dataset_map']
+            # Optionally check for node specific parent dataset name.
+            parent_dataset = dataset_config.get(selected_node,
+                dataset_config.get('__default__', CONFIG.parent_dataset)
+            )
+            log.info(parent_dataset)
+        else:
+            parent_dataset = CONFIG.parent_dataset
         dataset_name = pv_name
         mount_point = os.path.join(CONFIG.dataset_mount_dir, pv_name)
 

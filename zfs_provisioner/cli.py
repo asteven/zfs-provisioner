@@ -31,6 +31,8 @@ def main(ctx, log_level):
 @click.option('--namespace', help='The namespace the Provisioner is running in.',
     envvar='NAMESPACE')
 @click.option('--config', help='Provisioner configuration file.', envvar='CONFIG')
+@click.option('--parent-dataset', help='Name of the parent dataset under which to create the datasets.',
+    envvar='PARENT_DATASET')
 @click.option('--dataset-mount-dir', help='Directory under which to mount the created persistent volumes.',
     envvar='DATASET_MOUNT_DIR')
 @click.option('--container-image', help='The container image to use when scheduling pods.',
@@ -40,13 +42,16 @@ def main(ctx, log_level):
 @click.option('--kl', 'set_kopf_log_level', help='also set kopf\'s log level',
     is_flag=True, default=False)
 @click.pass_context
-def controller(ctx, provisioner_name, namespace, config, container_image, node_name, dataset_mount_dir, set_kopf_log_level):
+def controller(ctx, provisioner_name, namespace, config, container_image,
+        node_name, parent_dataset, dataset_mount_dir, set_kopf_log_level):
     log = ctx.obj['log']
     log.debug('controller: provisioner_name: %s', provisioner_name)
     log.debug('controller: namespace: %s', namespace)
     log.debug('controller: config: %s', config)
-    log.debug('controller: dataset_mount_dir: %s', dataset_mount_dir)
+    log.debug('controller: container_image: %s', container_image)
     log.debug('controller: node_name: %s', node_name)
+    log.debug('controller: parent_dataset: %s', parent_dataset)
+    log.debug('controller: dataset_mount_dir: %s', dataset_mount_dir)
 
     if set_kopf_log_level:
         logging.getLogger('kopf').setLevel(log.getEffectiveLevel())
@@ -57,6 +62,7 @@ def controller(ctx, provisioner_name, namespace, config, container_image, node_n
     handlers.configure(
         provisioner_name=provisioner_name,
         namespace=namespace,
+        parent_dataset=parent_dataset,
         config=config,
         container_image=container_image,
         node_name=node_name,
