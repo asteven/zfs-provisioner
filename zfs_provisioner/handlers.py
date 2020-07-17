@@ -303,7 +303,7 @@ async def delete_dataset(name, namespace, body, meta, spec, **_):
     storage_class_name = spec['storageClassName']
     storage_class = CONFIG.storage_classes[storage_class_name]
 
-    storage_class_mode = storage_class.parameters.get('mode', 'local')
+    storage_class_mode = storage_class.parameters.get('mode', storage_class.MODE_LOCAL)
     if storage_class_mode == storage_class.MODE_LOCAL:
         # TODO: do I really have to care about storage class mode when
         #       taking the dataset from a annotation or is everything already
