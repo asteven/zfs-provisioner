@@ -53,7 +53,7 @@ def configure(**kwargs):
             setattr(CONFIG, k, v)
 
 
-# Has the be below CONFIG.
+# Has to be below CONFIG to prevent circular import problems.
 from . import datasets
 
 
